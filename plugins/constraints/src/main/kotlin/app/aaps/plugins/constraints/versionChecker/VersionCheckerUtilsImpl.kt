@@ -11,7 +11,6 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.versionChecker.VersionCheckerUtils
 import app.aaps.core.interfaces.versionChecker.VersionDefinition
-import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.constraints.R
 import app.aaps.plugins.constraints.versionChecker.keys.VersionCheckerLongKey
@@ -35,20 +34,7 @@ class VersionCheckerUtilsImpl @Inject constructor(
 
     override fun triggerCheckVersion() {
         val version: String? = AllowedVersions.findByApi(definition, Build.VERSION.SDK_INT)
-        val newVersionByApi = compareWithCurrentVersion(newVersion = version, currentVersion = config.get().VERSION_NAME)
-
-        // App expiration
-        if (newVersionByApi || config.get().isDev()) {
-            var endDate = preferences.get(LongComposedKey.AppExpiration, config.get().VERSION_NAME)
-            AllowedVersions.findByVersion(definition, config.get().VERSION_NAME)?.let { dateAsString ->
-                AllowedVersions.endDateToMilliseconds(dateAsString)?.let { ed ->
-                    endDate = ed + T.days(1).msecs()
-                    preferences.put(LongComposedKey.AppExpiration, config.get().VERSION_NAME, value = endDate)
-                }
-            }
-            if (endDate != 0L) onExpireDateDetected(config.get().VERSION_NAME, endDate)
-        }
-
+        compareWithCurrentVersion(newVersion = version, currentVersion = config.get().VERSION_NAME)
     }
 
     @Suppress("SameParameterValue")
@@ -120,23 +106,6 @@ class VersionCheckerUtilsImpl @Inject constructor(
         }
         return true
     }
-
-    private fun onExpireDateDetected(currentVersion: String, endDate: Long) {
-        val now = dateUtil.now()
-        if (dateUtil.now() > endDate && shouldWarnAgain()) {
-            // store last notification time
-            preferences.put(VersionCheckerLongKey.LastVersionCheckWarning, now)
-            //notify
-            uiInteraction.addNotification(Notification.VERSION_EXPIRE, rh.gs(R.string.application_expired), Notification.URGENT)
-        } else if (dateUtil.isAfterNoon() && now > preferences.get(VersionCheckerLongKey.LastVersionCheckWarning) + warnEvery(endDate)) {
-            aapsLogger.debug(LTag.CORE, rh.gs(R.string.version_expire, currentVersion, dateUtil.dateString(endDate)))
-            uiInteraction.addNotification(Notification.VERSION_EXPIRE, rh.gs(R.string.version_expire, currentVersion, dateUtil.dateString(endDate)), Notification.LOW)
-            preferences.put(VersionCheckerLongKey.LastExpiredWarning, now)
-        }
-    }
-
-    private fun shouldWarnAgain() =
-        dateUtil.now() > preferences.get(VersionCheckerLongKey.LastVersionCheckWarning) + warnEvery(expiration = preferences.get(LongComposedKey.AppExpiration, config.get().VERSION_NAME))
 
     private fun String?.toNumberList() =
         this?.numericVersionPart().takeIf { !it.isNullOrBlank() }?.split(".")?.map { it.toInt() }
